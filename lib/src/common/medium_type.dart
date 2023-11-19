@@ -2,7 +2,7 @@ part of photogallery;
 
 /// A medium type.
 enum MediumType {
-  /// MediumType.image
+  /// MediumType.image aby
   image,
 
   /// MediumType.video
