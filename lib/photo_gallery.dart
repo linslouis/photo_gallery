@@ -130,7 +130,7 @@ class PhotoGallery {
     });
   }
 /// Get music files
-  getMusicFiles() async {
+  static Future getMusicFiles() async {
     final List<dynamic> result = await _channel.invokeMethod('getMusicFiles');
     return result;
   }
