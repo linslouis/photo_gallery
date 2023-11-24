@@ -7,6 +7,9 @@ enum MediumType {
 
   /// MediumType.video
   video,
+
+  /// MediumType.video
+  audio,
 }
 
 /// Convert MediumType to String
@@ -16,6 +19,8 @@ String? mediumTypeToJson(MediumType? value) {
       return 'image';
     case MediumType.video:
       return 'video';
+    case MediumType.audio:
+      return 'audio';
     default:
       return null;
   }
@@ -28,6 +33,8 @@ MediumType? jsonToMediumType(String? value) {
       return MediumType.image;
     case 'video':
       return MediumType.video;
+    case 'audio':
+      return MediumType.audio;
     default:
       return null;
   }

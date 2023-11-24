@@ -11,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.os.Build
 import android.provider.MediaStore
+import android.util.Log
 import android.util.Size
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -20,6 +21,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry.Registrar
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -49,6 +51,7 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
         const val imageType = "image"
         const val videoType = "video"
+        const val audioType = "audio"
 
         const val allAlbumId = "__ALL__"
         const val allAlbumName = "All"
@@ -223,16 +226,82 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
 
             //get all music files
-            "getMusicFiles" -> {
-                val musicFiles = getMusicFiles()
-                result.success(musicFiles)
+            "getAllMusicFiles" -> {
+                val musicFiles = getAllMusicFiles()
+
+                val originalJsonObject = JSONObject(musicFiles.toString())
+
+                // Get the root folder path ("/storage/emulated/0/")
+                val rootFolderPath = "/storage/emulated/0/"
+
+                // Create a new JSONObject for the modified structure
+                val modifiedJsonObject = JSONObject()
+
+                // Add the "start" attribute to the modified JSON
+                modifiedJsonObject.put("start", originalJsonObject.getInt("start"))
+
+                // Create an array to store the items in the modified structure
+                val modifiedItems = mutableListOf<JSONObject>()
+
+                // Iterate through the original items
+                val originalItems = originalJsonObject.getJSONArray("items")
+                for (i in 0 until originalItems.length()) {
+                    val originalItem = originalItems.getJSONObject(i)
+
+                    // Extract the folder path of the item
+                    val itemData = originalItem.getString("data")
+                    val folderPath = itemData.substring(rootFolderPath.length, itemData.lastIndexOf('/'))
+
+                    // Create a new JSONObject for the audio item
+                    val audioItem = JSONObject()
+                    audioItem.put("id", originalItem.getInt("id"))
+                    audioItem.put("displayName", originalItem.getString("displayName"))
+                    audioItem.put("title", originalItem.getString("title"))
+                    audioItem.put("size", originalItem.getLong("size"))
+                    audioItem.put("mimeType", originalItem.getString("mimeType"))
+                    audioItem.put("dateAdded", originalItem.getLong("dateAdded"))
+                    audioItem.put("dateModified", originalItem.getLong("dateModified"))
+                    audioItem.put("album", originalItem.getString("album"))
+                    audioItem.put("artist", originalItem.getString("artist"))
+                    audioItem.put("duration", originalItem.getLong("duration"))
+                    audioItem.put("data", itemData)
+
+                    // Check if the folder already exists in the modified structure
+                    val folderIndex = modifiedItems.indexOfFirst { it.getString("folderPath") == folderPath }
+
+                    if (folderIndex == -1) {
+                        // If the folder doesn't exist, create a new folder and add the audio item
+                        val folder = JSONObject()
+                        folder.put("folderPath", folderPath)
+                        folder.put("audioItems", mutableListOf(audioItem))
+                        modifiedItems.add(folder)
+                    } else {
+                        // If the folder exists, add the audio item to the existing folder
+                        val existingFolder = modifiedItems[folderIndex]
+                        val existingAudioItems = existingFolder.getJSONArray("audioItems")
+                        existingAudioItems.put(audioItem)
+                    }
+                }
+
+                // Add the modified items to the modified JSON
+                modifiedJsonObject.put("items", modifiedItems)
+
+
+                val file = File("/sdcard/Download/linslog.txt")
+                file.writeText(modifiedJsonObject.toString())
+
+                Log.e("LINSLOG", modifiedJsonObject.toString())
+                result.success(modifiedJsonObject)
+
+
+
             }
 
             else -> result.notImplemented()
         }
     }
 
-    private fun getMusicFiles(): Any {
+    private fun getAllMusicFiles(): Any {
 
         val musicProjection = arrayOf(
             MediaStore.Audio.Media._ID,
@@ -325,6 +394,10 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 listVideoAlbums().values.toList()
             }
 
+            audioType -> {
+                listAudioAlbums().values.toList()
+            }
+
             else -> {
                 listAllAlbums().values.toList()
             }
@@ -412,6 +485,57 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                         albumHashMap[bucketId] = hashMapOf(
                             "id" to bucketId,
                             "name" to folderName,
+                            "count" to 1
+                        )
+                    } else {
+                        val count = album["count"] as Int
+                        album["count"] = count + 1
+                    }
+                    total++
+                }
+            }
+
+            val albumLinkedMap = linkedMapOf<String, Map<String, Any>>()
+            albumLinkedMap[allAlbumId] = hashMapOf(
+                "id" to allAlbumId,
+                "name" to allAlbumName,
+                "count" to total
+            )
+            albumLinkedMap.putAll(albumHashMap)
+            return albumLinkedMap
+        }
+    }
+
+    private fun listAudioAlbums(): Map<String, Map<String, Any>> {
+        this.context.run {
+            var total = 0
+            val albumHashMap = hashMapOf<String, HashMap<String, Any>>()
+
+            val audioProjection = arrayOf(
+                MediaStore.Audio.Media.ALBUM,
+                MediaStore.Audio.Media.ALBUM_ID
+            )
+
+            val audioCursor = this.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                audioProjection,
+                null,
+                null,
+                null
+            )
+
+            audioCursor?.use { cursor ->
+                val albumColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
+                val albumColumnId = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID)
+
+                while (cursor.moveToNext()) {
+                    val albumId = cursor.getString(albumColumnId)
+                    val album = albumHashMap[albumId]
+                    if (album == null) {
+                        val albumName = cursor.getString(albumColumn)
+                        albumHashMap[albumId] = hashMapOf(
+                            "id" to albumId,
+                            "name" to albumName,
                             "count" to 1
                         )
                     } else {
