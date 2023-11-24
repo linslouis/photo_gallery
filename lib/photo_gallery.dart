@@ -129,6 +129,11 @@ class PhotoGallery {
       'mediumType': mediumTypeToJson(mediumType),
     });
   }
+/// Get music files
+  getMusicFiles() async {
+    final List<dynamic> result = await _channel.invokeMethod('getMusicFiles');
+    return result;
+  }
 
   /// Clean medium file cache
   static Future<void> cleanCache() async {

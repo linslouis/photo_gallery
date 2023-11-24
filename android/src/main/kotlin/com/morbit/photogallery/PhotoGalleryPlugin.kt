@@ -222,8 +222,97 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 }
             }
 
+            //get all music files
+            "getMusicFiles" -> {
+                val musicFiles = getMusicFiles()
+                result.success(musicFiles)
+            }
+
             else -> result.notImplemented()
         }
+    }
+
+    private fun getMusicFiles(): Any {
+
+        val musicProjection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.MIME_TYPE,
+            MediaStore.Audio.Media.DATE_ADDED,
+            MediaStore.Audio.Media.DATE_MODIFIED,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.DATA
+        )
+
+        val musicCursor = this.context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            musicProjection,
+            null,
+            null,
+            null
+        )
+
+        val musicList = mutableListOf<Map<String, Any?>>()
+
+        musicCursor?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val metadata = getMusicMetadata(cursor)
+                musicList.add(metadata)
+            }
+        }
+
+        return mapOf(
+            "start" to 0,
+            "items" to musicList
+        )
+
+    }
+
+    private fun getMusicMetadata(cursor: Cursor): Map<String, Any?> {
+
+        val idColumn = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
+        val displayNameColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+        val titleColumn = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+        val sizeColumn = cursor.getColumnIndex(MediaStore.Audio.Media.SIZE)
+        val mimeTypeColumn = cursor.getColumnIndex(MediaStore.Audio.Media.MIME_TYPE)
+        val dateAddedColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_ADDED)
+        val dateModifiedColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
+        val albumColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
+        val artistColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+        val durationColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
+        val dataColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+
+        val id = cursor.getLong(idColumn)
+        val displayName = cursor.getString(displayNameColumn)
+        val title = cursor.getString(titleColumn)
+        val size = cursor.getLong(sizeColumn)
+        val mimeType = cursor.getString(mimeTypeColumn)
+        val dateAdded = cursor.getLong(dateAddedColumn) * 1000
+        val dateModified = cursor.getLong(dateModifiedColumn) * 1000
+        val album = cursor.getString(albumColumn)
+        val artist = cursor.getString(artistColumn)
+        val duration = cursor.getLong(durationColumn)
+        val data = cursor.getString(dataColumn)
+
+        return mapOf(
+            "id" to id,
+            "displayName" to displayName,
+            "title" to title,
+            "size" to size,
+            "mimeType" to mimeType,
+            "dateAdded" to dateAdded,
+            "dateModified" to dateModified,
+            "album" to album,
+            "artist" to artist,
+            "duration" to duration,
+            "data" to data
+        )
+
+
     }
 
     private fun listAlbums(mediumType: String?): List<Map<String, Any?>> {
