@@ -197,8 +197,11 @@ class PhotoGallery {
   }
 
   /// Get music files
-  static Future getMusicFiles() async {
-    final result = await _channel.invokeMethod('getMusicFiles');
+  static Future getAllMusicFiles() async {
+    final result = await _channel.invokeMethod('getAllMusicFiles');
+    if (kDebugMode) {
+      print('LINSLOG:getAllMusicFiles ');
+    }
     return result;
   }
 

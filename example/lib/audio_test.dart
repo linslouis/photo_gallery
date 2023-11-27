@@ -1,312 +1,188 @@
-import 'dart:async';
-import 'dart:io';
-
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:photo_gallery/photo_gallery.dart';
-import 'package:transparent_image/transparent_image.dart';
-import 'package:video_player/video_player.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
-  @override
-  _MyAppState createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  List<Album>? _albums;
-  bool _loading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loading = true;
-    initAsync();
-  }
-
-  Future<void> initAsync() async {
-    if (await _promptPermissionSetting()) {
-      List<Album> albums = await PhotoGallery.listAudioAlbums();
-
-      setState(() {
-        _albums = albums;
-        _loading = false;
-      });
-    }
-    setState(() {
-      _loading = false;
-    });
-  }
-
-  Future<bool> _promptPermissionSetting() async {
-    if (Platform.isIOS) {
-      if (await Permission.photos.request().isGranted || await Permission.storage.request().isGranted) {
-        return true;
-      }
-    }
-    if (Platform.isAndroid) {
-      if (await Permission.storage.request().isGranted ||
-          await Permission.photos.request().isGranted &&
-              await Permission.videos.request().isGranted) {
-        return true;
-      }
-    }
-    return false;
-  }
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('Photo gallery example'),
-        ),
-        body: _loading
-            ? Center(
-                child: CircularProgressIndicator(),
-              )
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  double gridWidth = (constraints.maxWidth - 20) / 3;
-                  double gridHeight = gridWidth + 33;
-                  double ratio = gridWidth / gridHeight;
-                  return Container(
-                    padding: EdgeInsets.all(5),
-                    child: GridView.count(
-                      childAspectRatio: ratio,
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 5.0,
-                      crossAxisSpacing: 5.0,
-                      children: <Widget>[
-                        ...?_albums?.map(
-                          (album) => GestureDetector(
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(builder: (context) => AlbumPage(album)),
-                            ),
-                            child: Column(
-                              children: <Widget>[
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(5.0),
-                                  child: Container(
-                                    color: Colors.grey[300],
-                                    height: gridWidth,
-                                    width: gridWidth,
-                                    child: FadeInImage(
-                                      fit: BoxFit.cover,
-                                      placeholder: MemoryImage(kTransparentImage),
-                                      image: AlbumThumbnailProvider(
-                                        album: album,
-                                        highQuality: true,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  alignment: Alignment.topLeft,
-                                  padding: EdgeInsets.only(left: 2.0),
-                                  child: Text(
-                                    album.name ?? "Unnamed Album",
-                                    maxLines: 1,
-                                    textAlign: TextAlign.start,
-                                    style: TextStyle(
-                                      height: 1.2,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  alignment: Alignment.topLeft,
-                                  padding: EdgeInsets.only(left: 2.0),
-                                  child: Text(
-                                    album.count.toString(),
-                                    textAlign: TextAlign.start,
-                                    style: TextStyle(
-                                      height: 1.2,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+      title: 'Flutter Music Explorer',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
       ),
+      home: const MusicFilePicker(),
     );
   }
 }
 
-class AlbumPage extends StatefulWidget {
-  final Album album;
-
-  AlbumPage(Album album) : album = album;
+class MusicFilePicker extends StatefulWidget {
+  const MusicFilePicker({Key? key}) : super(key: key);
 
   @override
-  State<StatefulWidget> createState() => AlbumPageState();
+  _MusicFilePickerState createState() => _MusicFilePickerState();
 }
 
-class AlbumPageState extends State<AlbumPage> {
-  List<Medium>? _media;
+class _MusicFilePickerState extends State<MusicFilePicker> {
+  MusicFolder? currentFolder;
+  List<MusicFolder> folderPath = [];
 
   @override
   void initState() {
     super.initState();
-    initAsync();
+
+    PhotoGallery.getAllMusicFiles();
+    loadMusicData();
   }
 
-  void initAsync() async {
-    MediaPage mediaPage = await widget.album.listMedia();
-    setState(() {
-      _media = mediaPage.items;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back_ios),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: Text(widget.album.name ?? "Unnamed Album"),
-        ),
-        body: GridView.count(
-          crossAxisCount: 3,
-          mainAxisSpacing: 1.0,
-          crossAxisSpacing: 1.0,
-          children: <Widget>[
-            ...?_media?.map(
-              (medium) => GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => ViewerPage(medium)),
-                ),
-                child: Container(
-                  color: Colors.grey[300],
-                  child: FadeInImage(
-                    fit: BoxFit.cover,
-                    placeholder: MemoryImage(kTransparentImage),
-                    image: ThumbnailProvider(
-                      mediumId: medium.id,
-                      mediumType: medium.mediumType,
-                      highQuality: true,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class ViewerPage extends StatelessWidget {
-  final Medium medium;
-
-  ViewerPage(Medium medium) : medium = medium;
-
-  @override
-  Widget build(BuildContext context) {
-    DateTime? date = medium.creationDate ?? medium.modifiedDate;
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(Icons.arrow_back_ios),
-          ),
-          title: date != null ? Text(date.toLocal().toString()) : null,
-        ),
-        body: Container(
-          alignment: Alignment.center,
-          child: medium.mediumType == MediumType.image
-              ? GestureDetector(
-                  onTap: () async {
-                    PhotoGallery.deleteMedium(mediumId: medium.id);
-                  },
-                  child: FadeInImage(
-                    fit: BoxFit.cover,
-                    placeholder: MemoryImage(kTransparentImage),
-                    image: PhotoProvider(mediumId: medium.id),
-                  ),
-                )
-              : VideoProvider(
-                  mediumId: medium.id,
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class VideoProvider extends StatefulWidget {
-  final String mediumId;
-
-  const VideoProvider({
-    required this.mediumId,
-  });
-
-  @override
-  _VideoProviderState createState() => _VideoProviderState();
-}
-
-class _VideoProviderState extends State<VideoProvider> {
-  VideoPlayerController? _controller;
-  File? _file;
-
-  @override
-  void initState() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      initAsync();
-    });
-    super.initState();
-  }
-
-  Future<void> initAsync() async {
+  Future<void> loadMusicData() async {
     try {
-      _file = await PhotoGallery.getFile(mediumId: widget.mediumId);
-      _controller = VideoPlayerController.file(_file!);
-      _controller?.initialize().then((_) {
-        // Ensure the first frame is shown after the video is initialized, even before the play button has been pressed.
-        setState(() {});
+      String jsonString = await rootBundle.loadString('assets/json/MusicData.json');
+      final jsonResponse = json.decode(jsonString);
+
+      var rootJson = jsonResponse['']['storage']['emulated']['0'] as Map<String, dynamic>;
+      MusicFolder rootFolder = MusicFolder.fromJson(rootJson, '0');
+      setState(() {
+        currentFolder = rootFolder;
+        folderPath.clear(); // Clear existing path
+        folderPath.add(rootFolder); // Add '0' as the initial folder in the path
       });
     } catch (e) {
-      print("Failed : $e");
+      // Handle errors, e.g., file not found, JSON parsing error
+      print('Error loading music data: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return _controller == null || !_controller!.value.isInitialized
-        ? Container()
-        : Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              AspectRatio(
-                aspectRatio: _controller!.value.aspectRatio,
-                child: VideoPlayer(_controller!),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _controller!.value.isPlaying ? _controller!.pause() : _controller!.play();
-                  });
-                },
-                child: Icon(
-                  _controller!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                ),
-              ),
-            ],
-          );
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Music File Explorer'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            onPressed: () {
+              if (folderPath.length > 1) {
+                setState(() {
+                  currentFolder = folderPath[0];
+                  folderPath.clear();
+                  folderPath.add(currentFolder!);
+                });
+              }
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              if (folderPath.length > 1) {
+                setState(() {
+                  folderPath.removeLast();
+                  currentFolder = folderPath.last;
+                });
+              }
+            },
+          ),
+
+        ],
+      ),
+      body: currentFolder == null
+          ? const CircularProgressIndicator()
+          : ListView.builder(
+        itemCount: currentFolder!.musicFiles.length + currentFolder!.subFolders.length,
+        itemBuilder: (context, index) {
+          if (index < currentFolder!.subFolders.length) {
+            return buildFolderItem(currentFolder!.subFolders[index]);
+          } else {
+            int fileIndex = index - currentFolder!.subFolders.length;
+            return buildMusicItem(currentFolder!.musicFiles[fileIndex]);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget buildFolderItem(MusicFolder folder) {
+    return ListTile(
+      leading: const Icon(Icons.folder),
+      title: Text(folder.name),
+      onTap: () {
+        setState(() {
+          folderPath.add(currentFolder!);
+          currentFolder = folder;
+        });
+      },
+    );
+  }
+
+  Widget buildMusicItem(MusicItem item) {
+    return ListTile(
+      leading: const Icon(Icons.music_note),
+      title: Text(item.displayName),
+      onTap: () {
+        // Implement the logic for playing music or navigating into the folder
+        print('Tapped music file: ${item.dataPath}');
+      },
+    );
+  }
+}
+
+class MusicItem {
+  final int id;
+  final String artist;
+  final String title;
+  final String dataPath;
+  final String displayName;
+  final int duration;
+
+  MusicItem({
+    required this.id,
+    required this.artist,
+    required this.title,
+    required this.dataPath,
+    required this.displayName,
+    required this.duration,
+  });
+
+  factory MusicItem.fromJson(Map<String, dynamic> json) {
+    return MusicItem(
+      id: json['ID'],
+      artist: json['Artist'],
+      title: json['Title'],
+      dataPath: json['Data'],
+      displayName: json['DisplayName'],
+      duration: json['Duration'],
+    );
+  }
+}
+
+class MusicFolder {
+  final String name;
+  final List<MusicItem> musicFiles;
+  final List<MusicFolder> subFolders;
+
+  MusicFolder({required this.name, required this.musicFiles, required this.subFolders});
+  static MusicFolder fromJson(Map<String, dynamic> json, String folderName) {
+    List<MusicItem> musicFiles = [];
+    List<MusicFolder> subFolders = [];
+
+    json.forEach((key, value) {
+      if (value is List) {
+        // Assuming all lists contain music files
+        List<dynamic> musicList = value;
+        musicFiles.addAll(musicList.map((item) => MusicItem.fromJson(item as Map<String, dynamic>)).toList());
+      } else if (value is Map) {
+        // Subfolder
+        Map<String, dynamic> folderMap = value as Map<String, dynamic>;
+        subFolders.add(MusicFolder.fromJson(folderMap, key));
+      }
+    });
+
+    return MusicFolder(name: folderName, musicFiles: musicFiles, subFolders: subFolders);
   }
 }

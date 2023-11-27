@@ -12,6 +12,7 @@ import android.graphics.ImageDecoder
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import android.util.Size
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -136,7 +137,7 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         this.activity = null
     }
 
-    override fun onMethodCall(call: MethodCall, result: Result) {
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "listAlbums" -> {
                 val mediumType = call.argument<String>("mediumType")
@@ -230,6 +231,8 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             //get all music files
             "getAllMusicFiles" -> {
 
+                Log.e("LINSLOG", "getAllMusicFiles: 1");
+
                 writeMusicDataToJson()
 
 
@@ -263,6 +266,7 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
     private fun writeMusicDataToJson() {
         val jsonRoot = JSONObject()
+
         try {
             val projection = arrayOf(
                 MediaStore.Audio.Media._ID,
@@ -272,24 +276,25 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 MediaStore.Audio.Media.DISPLAY_NAME,
                 MediaStore.Audio.Media.DURATION
             )
+
             context.contentResolver.query(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 projection,
                 null,
                 null,
                 null
-            ).use { cursor ->
-                if (cursor != null && cursor.moveToFirst()) {
-                    val idIndex: Int = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
-                    val artistIndex: Int = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
-                    val titleIndex: Int = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
-                    val dataIndex: Int = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
-                    val displayNameIndex: Int =
-                        cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
-                    val durationIndex: Int =
-                        cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
                     do {
                         val fileJson = JSONObject()
+
+                        val idIndex = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
+                        val artistIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+                        val titleIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+                        val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+                        val displayNameIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+                        val durationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
+
                         if (idIndex != -1) {
                             fileJson.put("ID", cursor.getLong(idIndex))
                         }
@@ -300,7 +305,22 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             fileJson.put("Title", cursor.getString(titleIndex))
                         }
                         if (dataIndex != -1) {
-                            fileJson.put("Data", cursor.getString(dataIndex))
+                            val path = cursor.getString(dataIndex)
+                            val pathParts = path.split("/").toList().dropLastWhile { it.isEmpty() }
+
+                            var currentLevel = jsonRoot
+                            for (i in 0 until pathParts.size - 1) {
+                                val part = pathParts[i]
+                                if (!currentLevel.has(part)) {
+                                    currentLevel.put(part, JSONObject())
+                                }
+                                currentLevel = currentLevel.getJSONObject(part)
+                            }
+
+                            if (!currentLevel.has("mFiles")) {
+                                currentLevel.put("mFiles", JSONArray())
+                            }
+                            currentLevel.getJSONArray("mFiles").put(fileJson)
                         }
                         if (displayNameIndex != -1) {
                             fileJson.put("DisplayName", cursor.getString(displayNameIndex))
@@ -309,63 +329,21 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             fileJson.put("Duration", cursor.getLong(durationIndex))
                         }
 
-                        // Use the 'Data' field to determine where in jsonRoot to put this fileJson
-                        if (dataIndex != -1) {
-                            val path: String = cursor.getString(dataIndex)
-                            val pathParts =
-                                path.split("/".toRegex()).dropLastWhile { it.isEmpty() }
-                                    .toTypedArray()
-                            var currentLevel = jsonRoot
-                            for (i in 0 until pathParts.size - 1) {
-                                val part = pathParts[i]
-                                if (!currentLevel.has(part)) {
-                                    currentLevel.put(part, JSONObject())
-                                } else if (currentLevel[part] !is JSONObject) {
-                                    // Handle the case where the existing entry is not a JSONObject
-                                    // This is where you might need to adjust your structure or log an error
-                                }
-                                currentLevel = currentLevel.getJSONObject(part)
-                            }
-                            if (currentLevel.has("mFiles")) {
-                                val musicObj = currentLevel["mFiles"]
-                                if (musicObj is JSONArray) {
-                                    musicObj.put(fileJson)
-                                } else {
-                                    // Handle the case where "mFiles" is not a JSONArray
-                                    val newMusicArray = JSONArray()
-                                    newMusicArray.put(musicObj) // Add the existing object
-                                    newMusicArray.put(fileJson) // Add the new file
-                                    currentLevel.put("mFiles", newMusicArray)
-                                }
-                            } else {
-                                val newMusicArray = JSONArray()
-                                newMusicArray.put(fileJson)
-                                currentLevel.put("mFiles", newMusicArray)
-                            }
-                            if (!currentLevel.has("mFiles")) {
-                                currentLevel.put("mFiles", JSONArray())
-                            }
-                            currentLevel.getJSONArray("mFiles").put(fileJson)
-                        }
                     } while (cursor.moveToNext())
+                } else {
+                    Log.e("writeMusicDataToJson", "Cursor is empty or null")
                 }
             }
-            try {
-                val file =
-                    File(Environment.getExternalStorageDirectory().absolutePath + "/Download/AAA/MusicData.json")
 
-                // Ensure the parent directories exist
-                val parentDir = file.parentFile
-                if (!parentDir.exists()) {
-                    parentDir.mkdirs()
-                }
-                FileWriter(file, false).use { fileWriter ->  // false to overwrite
-                    fileWriter.write(jsonRoot.toString(4)) // Write the JSON data
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
+            // Write JSON to file
+            val file = File(getCachePath().path + "/MusicData.json")
+            file.parentFile?.mkdirs()
+            FileWriter(file, false).use { fileWriter ->
+                fileWriter.write(jsonRoot.toString(4)) // Write the JSON data
             }
-        } catch (e: java.lang.Exception) {
+            Log.e("LINSLOG", "Files saved: ${file.path}")
+
+        } catch (e: Exception) {
             e.printStackTrace()
         }
     }
