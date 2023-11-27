@@ -37,13 +37,19 @@ class _MusicFilePickerState extends State<MusicFilePicker> {
   void initState() {
     super.initState();
 
-    PhotoGallery.getAllMusicFiles();
-    loadMusicData();
+      loadMusicDataAndPrint();
+
   }
 
-  Future<void> loadMusicData() async {
+  Future<void> loadMusicDataAndPrint() async {
+    String  jsonString = await  PhotoGallery.getAllMusicFiles();
+    print("LINSLOG: $jsonString"); // This should now work correctly
+    loadMusicData(jsonString:jsonString);
+  }
+
+  Future<void> loadMusicData({required String jsonString}  ) async {
     try {
-      String jsonString = await rootBundle.loadString('assets/json/MusicData.json');
+
       final jsonResponse = json.decode(jsonString);
 
       var rootJson = jsonResponse['']['storage']['emulated']['0'] as Map<String, dynamic>;

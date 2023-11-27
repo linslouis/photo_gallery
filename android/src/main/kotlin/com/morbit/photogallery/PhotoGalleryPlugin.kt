@@ -10,7 +10,6 @@ import android.database.Cursor.FIELD_TYPE_INTEGER
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.os.Build
-import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
@@ -27,7 +26,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FileWriter
-import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -233,8 +231,10 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
                 Log.e("LINSLOG", "getAllMusicFiles: 1");
 
-                writeMusicDataToJson()
 
+                result.success(
+                    getMusicDataJson()
+                )
 
 
             }
@@ -264,7 +264,7 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
         }
     }
-    private fun writeMusicDataToJson() {
+    fun getMusicDataJson(): String {
         val jsonRoot = JSONObject()
 
         try {
@@ -279,73 +279,57 @@ class PhotoGalleryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
             context.contentResolver.query(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                null,
-                null,
-                null
+                projection, null, null, null
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
+                    val idIndex = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
+                    val artistIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+                    val titleIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+                    val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+                    val displayNameIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+                    val durationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
+
                     do {
-                        val fileJson = JSONObject()
+                        val fileJson = JSONObject().apply {
+                            if (idIndex != -1) put("ID", cursor.getLong(idIndex))
+                            if (artistIndex != -1) put("Artist", cursor.getString(artistIndex))
+                            if (titleIndex != -1) put("Title", cursor.getString(titleIndex))
+                            if (dataIndex != -1) put("Data", cursor.getString(dataIndex))
+                            if (displayNameIndex != -1) put("DisplayName", cursor.getString(displayNameIndex))
+                            if (durationIndex != -1) put("Duration", cursor.getLong(durationIndex))
+                        }
 
-                        val idIndex = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
-                        val artistIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
-                        val titleIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
-                        val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
-                        val displayNameIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
-                        val durationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
-
-                        if (idIndex != -1) {
-                            fileJson.put("ID", cursor.getLong(idIndex))
-                        }
-                        if (artistIndex != -1) {
-                            fileJson.put("Artist", cursor.getString(artistIndex))
-                        }
-                        if (titleIndex != -1) {
-                            fileJson.put("Title", cursor.getString(titleIndex))
-                        }
                         if (dataIndex != -1) {
                             val path = cursor.getString(dataIndex)
-                            val pathParts = path.split("/").toList().dropLastWhile { it.isEmpty() }
-
+                            val pathParts = path.split("/")
                             var currentLevel = jsonRoot
+
                             for (i in 0 until pathParts.size - 1) {
                                 val part = pathParts[i]
-                                if (!currentLevel.has(part)) {
+                                currentLevel = if (!currentLevel.has(part)) {
                                     currentLevel.put(part, JSONObject())
+                                    currentLevel.getJSONObject(part)
+                                } else if (currentLevel.get(part) is JSONObject) {
+                                    currentLevel.getJSONObject(part)
+                                } else {
+                                    // Handle the case where the existing entry is not a JSONObject
+                                    continue
                                 }
-                                currentLevel = currentLevel.getJSONObject(part)
                             }
 
-                            if (!currentLevel.has("mFiles")) {
-                                currentLevel.put("mFiles", JSONArray())
+                            val musicArray = currentLevel.optJSONArray("mFiles") ?: JSONArray().also {
+                                currentLevel.put("mFiles", it)
                             }
-                            currentLevel.getJSONArray("mFiles").put(fileJson)
+                            musicArray.put(fileJson)
                         }
-                        if (displayNameIndex != -1) {
-                            fileJson.put("DisplayName", cursor.getString(displayNameIndex))
-                        }
-                        if (durationIndex != -1) {
-                            fileJson.put("Duration", cursor.getLong(durationIndex))
-                        }
-
                     } while (cursor.moveToNext())
-                } else {
-                    Log.e("writeMusicDataToJson", "Cursor is empty or null")
                 }
             }
-
-            // Write JSON to file
-            val file = File(getCachePath().path + "/MusicData.json")
-            file.parentFile?.mkdirs()
-            FileWriter(file, false).use { fileWriter ->
-                fileWriter.write(jsonRoot.toString(4)) // Write the JSON data
-            }
-            Log.e("LINSLOG", "Files saved: ${file.path}")
-
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
+        return jsonRoot.toString(4)
     }
     private fun listImageAlbums(): Map<String, Map<String, Any>> {
         this.context.run {
